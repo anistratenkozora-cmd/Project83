@@ -1,0 +1,518 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Интерактивная доска для Zoom</title>
+    <style>
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+        user-select: none;
+      }
+
+      body {
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        overflow: hidden;
+        background-color: #0f172a;
+        color: #f8fafc;
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+      }
+
+      /* Верхняя панель управления (Glassmorphism) */
+      .toolbar {
+        position: fixed;
+        top: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: rgba(30, 41, 59, 0.75);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        padding: 10px 20px;
+        border-radius: 16px;
+        display: flex;
+        align-items: center;
+        gap: 15px;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+        z-index: 1000;
+        flex-wrap: wrap;
+        max-width: 95vw;
+        justify-content: center;
+        transition: all 0.3s ease;
+      }
+
+      .tool-group {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        border-right: 1px solid rgba(255, 255, 255, 0.15);
+        padding-right: 15px;
+      }
+
+      .tool-group:last-child {
+        border-right: none;
+        padding-right: 0;
+      }
+
+      button {
+        background: rgba(255, 255, 255, 0.08);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        color: #fff;
+        padding: 8px 12px;
+        border-radius: 10px;
+        cursor: pointer;
+        font-size: 14px;
+        font-weight: 500;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        transition: all 0.2s ease;
+      }
+
+      button:hover {
+        background: rgba(255, 255, 255, 0.2);
+        transform: translateY(-2px);
+      }
+
+      button.active {
+        background: #3b82f6;
+        border-color: #60a5fa;
+        box-shadow: 0 0 12px rgba(59, 130, 246, 0.5);
+      }
+
+      /* Палитра цветов */
+      .color-palette {
+        display: flex;
+        gap: 6px;
+        align-items: center;
+      }
+
+      .color-btn {
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        border: 2px solid rgba(255, 255, 255, 0.3);
+        cursor: pointer;
+        padding: 0;
+        transition:
+          transform 0.2s,
+          border-color 0.2s;
+      }
+
+      .color-btn:hover {
+        transform: scale(1.15);
+      }
+
+      .color-btn.active {
+        border-color: #fff;
+        transform: scale(1.2);
+        box-shadow: 0 0 8px rgba(255, 255, 255, 0.8);
+      }
+
+      input[type="range"] {
+        accent-color: #3b82f6;
+        cursor: pointer;
+        width: 80px;
+      }
+
+      select {
+        background: rgba(15, 23, 42, 0.8);
+        color: #fff;
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        padding: 7px 10px;
+        border-radius: 8px;
+        outline: none;
+        cursor: pointer;
+        font-size: 13px;
+      }
+
+      /* Область холста с поддержкой масштабирования */
+      #canvas-container {
+        width: 100vw;
+        height: 100vh;
+        overflow: hidden;
+        position: relative;
+        cursor: crosshair;
+        background-color: #ffffff;
+        transition: background 0.3s;
+      }
+
+      canvas {
+        position: absolute;
+        top: 0;
+        left: 0;
+        transform-origin: 0 0;
+      }
+
+      /* Стили фонов для доски */
+      .bg-white {
+        background-color: #ffffff;
+      }
+      .bg-dark {
+        background-color: #1e293b;
+      }
+      .bg-grid {
+        background-color: #ffffff;
+        background-image:
+          linear-gradient(to right, #f1f5f9 1px, transparent 1px),
+          linear-gradient(to bottom, #f1f5f9 1px, transparent 1px);
+        background-size: 30px 30px;
+      }
+      .bg-dots {
+        background-color: #ffffff;
+        background-image: radial-gradient(#cbd5e1 1.5px, transparent 1.5px);
+        background-size: 30px 30px;
+      }
+      .bg-lines {
+        background-color: #ffffff;
+        background-image: linear-gradient(
+          to bottom,
+          #e2e8f0 1px,
+          transparent 1px
+        );
+        background-size: 100% 35px;
+      }
+    </style>
+  </head>
+  <body class="bg-white" id="main-body">
+    <!-- Панель управления -->
+    <div class="toolbar">
+      <!-- Инструменты рисования -->
+      <div class="tool-group">
+        <button class="active" onclick="setTool('pen')" title="Ручка">
+          ✏️ Ручка
+        </button>
+        <button onclick="setTool('marker')" title="Фломастер">
+          🖍️ Фломастер
+        </button>
+        <button onclick="setTool('pencil')" title="Карандаш">
+          📏 Карандаш
+        </button>
+        <button onclick="setTool('eraser')" title="Ластик">🧹 Ластик</button>
+      </div>
+
+      <!-- Фигуры -->
+      <div class="tool-group">
+        <button onclick="setTool('rect')" title="Прямоугольник">⬜</button>
+        <button onclick="setTool('circle')" title="Круг">⭕</button>
+        <button onclick="setTool('line')" title="Линия">╱</button>
+      </div>
+
+      <!-- Выбор цвета и толщины -->
+      <div class="tool-group">
+        <div class="color-palette">
+          <button
+            class="color-btn active"
+            style="background: #1e293b"
+            onclick="setColor('#1e293b', this)"
+            title="Черный"
+          ></button>
+          <button
+            class="color-btn"
+            style="background: #ef4444"
+            onclick="setColor('#ef4444', this)"
+            title="Красный"
+          ></button>
+          <button
+            class="color-btn"
+            style="background: #3b82f6"
+            onclick="setColor('#3b82f6', this)"
+            title="Синий"
+          ></button>
+          <button
+            class="color-btn"
+            style="background: #22c55e"
+            onclick="setColor('#22c55e', this)"
+            title="Зеленый"
+          ></button>
+          <button
+            class="color-btn"
+            style="background: #eab308"
+            onclick="setColor('#eab308', this)"
+            title="Желтый"
+          ></button>
+        </div>
+        <input
+          type="range"
+          id="sizePicker"
+          min="1"
+          max="50"
+          value="4"
+          title="Толщина линии"
+        />
+      </div>
+
+      <!-- Управление доской (Отмена, Очистка) -->
+      <div class="tool-group">
+        <button onclick="undo()" title="Удалить последний элемент">
+          ↩️ Назад
+        </button>
+        <button onclick="clearCanvas()" title="Очистить всё">🗑️ Сброс</button>
+      </div>
+
+      <!-- Смена фона -->
+      <div class="tool-group">
+        <select
+          id="bgSelector"
+          onchange="changeBackground(this.value)"
+          title="Сменить фон доски"
+        >
+          <option value="bg-white">⚪ Белая</option>
+          <option value="bg-dark">🌙 Темная</option>
+          <option value="bg-grid">🔲 В клетку</option>
+          <option value="bg-dots">🔹 В точку</option>
+          <option value="bg-lines">📑 В линейку</option>
+        </select>
+      </div>
+
+      <!-- Зум и размер доски -->
+      <div class="tool-group">
+        <button onclick="zoomIn()" title="Увеличить">➕</button>
+        <button onclick="zoomOut()" title="Уменьшить">➖</button>
+        <button onclick="resetZoom()" title="Сбросить зум">🔄</button>
+      </div>
+    </div>
+
+    <!-- Холст -->
+    <div id="canvas-container">
+      <canvas id="board"></canvas>
+    </div>
+
+    <script>
+      const canvas = document.getElementById("board");
+      const ctx = canvas.getContext("2d");
+      const container = document.getElementById("canvas-container");
+
+      let currentTool = "pen";
+      let currentColor = "#1e293b";
+      let isDrawing = false;
+      let startX, startY;
+      let history = [];
+
+      let scale = 1;
+      let panX = 0;
+      let panY = 0;
+
+      const CANVAS_WIDTH = 5000;
+      const CANVAS_HEIGHT = 5000;
+
+      function initCanvas() {
+        canvas.width = CANVAS_WIDTH;
+        canvas.height = CANVAS_HEIGHT;
+        saveState();
+      }
+
+      function saveState() {
+        if (history.length > 30) history.shift();
+        history.push(ctx.getImageData(0, 0, canvas.width, canvas.height));
+      }
+
+      function undo() {
+        if (history.length > 1) {
+          history.pop();
+          let previousState = history[history.length - 1];
+          ctx.putImageData(previousState, 0, 0);
+        }
+      }
+
+      function clearCanvas() {
+        if (confirm("Очистить всю доску?")) {
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          saveState();
+        }
+      }
+
+      function setTool(tool) {
+        currentTool = tool;
+        // Переключаем класс активности только для инструментов рисования/фигур
+        document
+          .querySelectorAll(".toolbar .tool-group button")
+          .forEach((b) => {
+            if (!b.classList.contains("color-btn")) {
+              // Если это кнопка инструмента
+              if (
+                b.getAttribute("onclick") &&
+                b.getAttribute("onclick").includes(tool)
+              ) {
+                b.classList.add("active");
+              } else if (
+                [
+                  "pen",
+                  "marker",
+                  "pencil",
+                  "eraser",
+                  "rect",
+                  "circle",
+                  "line",
+                ].some((t) => b.getAttribute("onclick")?.includes(t))
+              ) {
+                b.classList.remove("active");
+              }
+            }
+          });
+      }
+
+      function setColor(color, btn) {
+        currentColor = color;
+        document
+          .querySelectorAll(".color-btn")
+          .forEach((b) => b.classList.remove("active"));
+        btn.classList.add("active");
+      }
+
+      function changeBackground(bgClass) {
+        document.getElementById("main-body").className = bgClass;
+      }
+
+      let snapshot;
+
+      function getMousePos(e) {
+        const rect = canvas.getBoundingClientRect();
+        return {
+          x: (e.clientX - rect.left) / scale,
+          y: (e.clientY - rect.top) / scale,
+        };
+      }
+
+      canvas.addEventListener("mousedown", (e) => {
+        if (e.button === 1 || e.shiftKey) {
+          isPanning = true;
+          panStartX = e.clientX - panX;
+          panStartY = e.clientY - panY;
+          return;
+        }
+
+        isDrawing = true;
+        const pos = getMousePos(e);
+        startX = pos.x;
+        startY = pos.y;
+
+        ctx.beginPath();
+        ctx.moveTo(startX, startY);
+        snapshot = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+        const size = document.getElementById("sizePicker").value;
+
+        ctx.strokeStyle = currentColor;
+        ctx.fillStyle = currentColor;
+        ctx.lineWidth = size;
+        ctx.lineCap = "round";
+        ctx.lineJoin = "round";
+
+        if (currentTool === "marker") {
+          ctx.globalAlpha = 0.35;
+        } else if (currentTool === "eraser") {
+          ctx.strokeStyle = getEraserColor();
+          ctx.globalAlpha = 1.0;
+        } else {
+          ctx.globalAlpha = 1.0;
+        }
+      });
+
+      canvas.addEventListener("mousemove", (e) => {
+        if (isPanning) {
+          panX = e.clientX - panStartX;
+          panY = e.clientY - panStartY;
+          updateTransform();
+          return;
+        }
+
+        if (!isDrawing) return;
+        const pos = getMousePos(e);
+
+        if (
+          currentTool === "pen" ||
+          currentTool === "marker" ||
+          currentTool === "eraser"
+        ) {
+          ctx.lineTo(pos.x, pos.y);
+          ctx.stroke();
+        } else if (currentTool === "pencil") {
+          ctx.lineWidth = 1;
+          ctx.lineTo(pos.x, pos.y);
+          ctx.stroke();
+        } else {
+          ctx.putImageData(snapshot, 0, 0);
+          drawShape(pos.x, pos.y);
+        }
+      });
+
+      canvas.addEventListener("mouseup", () => {
+        if (isDrawing) {
+          isDrawing = false;
+          saveState();
+        }
+        isPanning = false;
+      });
+
+      function getEraserColor() {
+        const bodyClass = document.getElementById("main-body").className;
+        if (bodyClass.includes("dark")) return "#1e293b";
+        return "#ffffff";
+      }
+
+      function drawShape(currentX, currentY) {
+        ctx.beginPath();
+        if (currentTool === "rect") {
+          ctx.strokeRect(startX, startY, currentX - startX, currentY - startY);
+        } else if (currentTool === "circle") {
+          let radius = Math.sqrt(
+            Math.pow(currentX - startX, 2) + Math.pow(currentY - startY, 2),
+          );
+          ctx.arc(startX, startY, radius, 0, 2 * Math.PI);
+          ctx.stroke();
+        } else if (currentTool === "line") {
+          ctx.moveTo(startX, startY);
+          ctx.lineTo(currentX, currentY);
+          ctx.stroke();
+        }
+      }
+
+      let isPanning = false;
+      let panStartX = 0;
+      let panStartY = 0;
+
+      function updateTransform() {
+        canvas.style.transform = `translate(${panX}px, ${panY}px) scale(${scale})`;
+      }
+
+      function zoomIn() {
+        scale = Math.min(scale + 0.15, 3.0);
+        updateTransform();
+      }
+
+      function zoomOut() {
+        scale = Math.max(scale - 0.15, 0.3);
+        updateTransform();
+      }
+
+      function resetZoom() {
+        scale = 1;
+        panX = 0;
+        panY = 0;
+        updateTransform();
+      }
+
+      container.addEventListener(
+        "wheel",
+        (e) => {
+          e.preventDefault();
+          const zoomIntensity = 0.1;
+          if (e.deltaY < 0) {
+            scale = Math.min(scale + zoomIntensity, 3.0);
+          } else {
+            scale = Math.max(scale - zoomIntensity, 0.3);
+          }
+          updateTransform();
+        },
+        { passive: false },
+      );
+
+      initCanvas();
+    </script>
+  </body>
+</html>
